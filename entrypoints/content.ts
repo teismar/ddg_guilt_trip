@@ -1,50 +1,99 @@
+import { SUPPORTED_BANGS, BangConfig } from '../utils/bangs';
+import { logger } from '../utils/logger';
+
 export default defineContentScript({
   // Use specific TLDs to be safe
-  matches: [
-    "*://www.google.com/*",
-    "*://www.google.at/*", 
-    "*://www.google.de/*",
-    "*://google.com/*",
-    "*://google.at/*"
-  ],
+  matches: SUPPORTED_BANGS.flatMap(b => b.matchPatterns),
 
   async main() {
-    console.log("✅ DDG Guilt Trip: I am running on this page!"); 
+    logger.log("✅ DDG Guilt Trip: I am running on this page!"); 
     
-    // 1. Get the timestamp from storage
-    // (Only declare 'data' once!)
-    const data = await browser.storage.local.get("lastBangTime");
-    const lastBangTime = data.lastBangTime;
+    // Fetch preferences
+    const data = await browser.storage.local.get(["lastBang", "bannerStyle", "strictMode", "customRedirects", "stats"]);
+    const lastBang = data.lastBang;
+    const bannerStyle = data.bannerStyle;
+    const strictMode = data.strictMode || false;
+    const customRedirects = data.customRedirects || {};
+    const stats = data.stats || { interventions: 0 };
     
-    console.log("🕒 Time stored in background:", lastBangTime);
+    if (!lastBang) return;
 
-    // 2. If no bang recorded, exit
-    if (!lastBangTime) return;
+    const timeDiff = Date.now() - lastBang.timestamp;
 
-    // 3. Check how much time has passed (in milliseconds)
-    const timeDiff = Date.now() - lastBangTime;
-
-    // 4. If less than 15 seconds have passed (increased slightly to be safe)
     if (timeDiff < 15000) {
-      console.log(`Guilt Trip Triggered! (!g used ${timeDiff}ms ago)`);
-      showGuiltBanner();
+      const bang = SUPPORTED_BANGS.find(b => b.id === lastBang.id);
+      if (!bang) return;
+
+      logger.log(`Guilt Trip Triggered! (${bang.trigger} used ${timeDiff}ms ago)`);
+
+      // Increment stats
+      if (!stats.history) stats.history = [];
+      stats.history.push({ ts: Date.now(), bangId: bang.id });
+      stats.interventions = stats.history.length; // Keep total synced
       
-      // Clear the flag so reloading the page doesn't show the banner again
-      browser.storage.local.remove("lastBangTime");
+      await browser.storage.local.set({ stats });
+
+      const customBaseUrl = customRedirects[bang.id];
+
+      if (strictMode) {
+        const currentUrl = new URL(window.location.href);
+        const query = bang.extractQuery(currentUrl);
+        if (query) {
+          logger.log("Strict Mode: Auto-redirecting...");
+          
+          // Brief "toast" notification before redirect
+          const toast = document.createElement("div");
+          Object.assign(toast.style, {
+            position: "fixed",
+            bottom: "20px",
+            right: "20px",
+            backgroundColor: "#333",
+            color: "white",
+            padding: "12px 24px",
+            borderRadius: "8px",
+            zIndex: "999999",
+            fontSize: "14px",
+            fontFamily: "Segoe UI, sans-serif",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            opacity: "0",
+            transition: "opacity 0.3s ease"
+          });
+          toast.textContent = `Redirecting to privacy alternative via ${bang.trigger}...`;
+          document.body.appendChild(toast);
+          
+          requestAnimationFrame(() => toast.style.opacity = "1");
+
+          // Slight delay to allow reading the toast
+          setTimeout(() => {
+            window.location.replace(bang.getRedirectUrl(query, customBaseUrl));
+          }, 800); 
+
+          browser.storage.local.remove("lastBang");
+          return;
+        }
+      }
+
+      showGuiltBanner(bang, bannerStyle, customBaseUrl);
+      
+      browser.storage.local.remove("lastBang");
     }
   },
 });
 
-function showGuiltBanner() {
+function showGuiltBanner(bang: BangConfig, style?: { bg: string, text: string }, customBaseUrl?: string) {
   const banner = document.createElement("div");
+  
+  // Default colors
+  const bgColor = style?.bg || "#de5833";
+  const textColor = style?.text || "white";
   
   Object.assign(banner.style, {
     position: "fixed",
     top: "0",
     left: "0",
     width: "100%",
-    backgroundColor: "#de5833",
-    color: "white",
+    backgroundColor: bgColor,
+    color: textColor,
     textAlign: "center",
     padding: "16px",
     fontSize: "18px",
@@ -54,32 +103,60 @@ function showGuiltBanner() {
     justifyContent: "center",
     alignItems: "center",
     gap: "15px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.2)"
+    boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+    transform: "translateY(-120%)",
+    transition: "transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28)"
   });
 
+  const message = bang.bannerMessage || `You used <b>${bang.trigger}</b> (${bang.name}). Are you sure you couldn't find it on DuckDuckGo?`;
+
   banner.innerHTML = `
-    <span>🦆 You used <b>!g</b>. Are you sure you couldn't find it on DuckDuckGo?</span>
-    <button id="ddg-return-btn" style="padding: 6px 12px; cursor: pointer; border: none; background: white; color: #de5833; font-weight: bold; border-radius: 4px;">Take me back</button>
-    <button id="ddg-close-btn" style="background: none; border: none; color: white; cursor: pointer; font-size: 20px;">✕</button>
+    <span>🦆 ${message}</span>
+    <button id="ddg-return-btn" style="padding: 6px 12px; cursor: pointer; border: none; background: white; color: ${bgColor}; font-weight: bold; border-radius: 4px;">Take me back</button>
+    <button id="ddg-close-btn" style="background: none; border: none; color: ${textColor}; cursor: pointer; font-size: 20px;">✕</button>
   `;
 
   document.body.prepend(banner);
+
+  // Trigger animation
+  requestAnimationFrame(() => {
+    banner.style.transform = "translateY(0)";
+  });
 
   // Add Button Listeners
   const returnBtn = document.getElementById("ddg-return-btn");
   const closeBtn = document.getElementById("ddg-close-btn");
 
   if (returnBtn) {
+    returnBtn.focus(); // Auto-focus for keyboard accessibility
+    
     returnBtn.addEventListener("click", () => {
-      const params = new URLSearchParams(window.location.search);
-      const query = params.get("q") || "";
-      window.location.href = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+      const currentUrl = new URL(window.location.href);
+      const query = bang.extractQuery(currentUrl);
+      
+      if (query) {
+        window.location.href = bang.getRedirectUrl(query, customBaseUrl);
+      } else {
+        window.location.href = "https://duckduckgo.com/";
+      }
     });
   }
 
+  // Keyboard accessibility (Escape to close)
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      banner.style.transform = "translateY(-120%)";
+      setTimeout(() => banner.remove(), 300);
+      document.removeEventListener("keydown", onKeyDown);
+    }
+  };
+  document.addEventListener("keydown", onKeyDown);
+
   if (closeBtn) {
     closeBtn.addEventListener("click", () => {
-      banner.remove();
+      banner.style.transform = "translateY(-120%)";
+      setTimeout(() => banner.remove(), 300);
+      document.removeEventListener("keydown", onKeyDown);
     });
   }
 }
