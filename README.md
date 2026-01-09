@@ -1,8 +1,10 @@
+<div align="center">
+
+<img src="public/logo.svg" alt="DDG Guilt Trip Logo" width="128">
+
 # DDG Guilt Trip
 
 A browser extension that mildly "guilts" you when you use DuckDuckGo bangs (like `!g`, `!yt`, `!a`) to jump to non-private platforms. It intercepts the request, suggests a privacy-friendly alternative, or lets you proceed if you must.
-
-<div align="center">
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Coming_Soon-blue?style=for-the-badge&logo=google-chrome)](https://chrome.google.com/webstore/detail/YOUR_ID_HERE)
 [![Firefox Add-on](https://img.shields.io/badge/Firefox_Add--ons-Pending-orange?style=for-the-badge&logo=firefox-browser)](https://addons.mozilla.org/firefox/addon/ddg-guilt-trip/)
@@ -36,3 +38,7 @@ pnpm dev
 | `!gh`| GitHub | DDG Site Search |
 | `!w` | Wikipedia| Wikiless |
 | `!r` | Reddit | DDG Site Search |
+
+## Screenshot
+
+![Extension Screenshot](gh_assets/screenshot.png)
