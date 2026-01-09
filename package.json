@@ -3,6 +3,7 @@
   "description": "Reminds you to try privacy-friendly alternatives when using specific DuckDuckGo !bangs.",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@10.26.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
