@@ -14,6 +14,15 @@ export default defineConfig({
       48: '/icon/48.png',
       96: '/icon/96.png',
       128: '/icon/128.png'
+    },
+    browser_specific_settings: {
+      gecko: {
+        id: "ddg-guilt-trip@teismar.github.io",
+        strict_min_version: "109.0",
+        data_collection_permissions: {
+             "required": ["none"]
+        }
+      }
     }
   }
 });
